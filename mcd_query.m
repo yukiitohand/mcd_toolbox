@@ -60,8 +60,9 @@ function [pres,rho,temp,extvar] = mcd_query(date_julian,xz,xlon,xlat,varargin)
 %% VARARGIN
 zkey     = 3;
 hireskey = 1;
-verbose  = true;
-dset     = '/project/crism/users/itohy1/data/MCD/MCD5.3/data/';
+verbose  = false;
+mcd_ver  = '6_1';
+dset     = [];
 scena    = 1;
 extvarkeys = zeros(1,100);
 if (rem(length(varargin),2)==1)
@@ -85,6 +86,8 @@ else
                 if ~isvector(extvarkeys) || length(extvarkeys) ~= 100
                     error('EXTVARKEYS needs to be 100 length vector');
                 end
+            case 'MCD_VER'
+                mcd_ver = varargin{i+1};
             case 'VERBOSE'
                 verbose = varargin{i+1};
             otherwise
@@ -92,6 +95,18 @@ else
         end
     end
 end
+
+if isempty(dset)
+    switch mcd_ver
+        case '6_1'
+            dset = '/Users/itohy1/MCD_DATA_6_1/';
+        case '5_3'
+            dset = '/Users/itohy1/MCD_DATA_5_3/';
+        otherwise
+            error('Supported MCD_VER are ''6_1'' and ''5_3''.');
+    end
+end
+
 
 %%
 % mlb_call_mcd()
@@ -117,66 +132,72 @@ xdate     = date_julian;  % <double precision> date
 
 % DUST scenario
 % dset      = 'MCD_DATA/'; % <character*50> data set
-% scena     = 1;           % <integer> scenario (1 = Climatology ave solar)
+% scena     = 1;         % <integer> scenario (1 = Climatology ave solar)
 perturkey = 1;           % <integer>  perturbation type (1= none)
 seedin    = 1;           % <real> 
 gwlength  = 0.0;         % <real>  for small scale (ie: gravity wave) perturbations;
-% extvarkeys(1)=0;         % <integer> array output type (extvar(i) = 0 : don't compute)
 
-% for i=2:100
-%  extvarkeys(i)=extvarkeys(1);
-% end % i
+switch mcd_ver
+    case '6_1'
+        out = mlb_call_mcd_MCDv6_1(zkey, xz, xlon, xlat, hireskey, ...
+            datekey, xdate, localtime, dset, scena, perturkey, seedin, ...
+            gwlength, extvarkeys);
+    case '5_3'
+        out = mlb_call_mcd_MCDv5_3(zkey, xz, xlon, xlat, hireskey, ...
+            datekey, xdate, localtime, dset, scena, perturkey, seedin, ...
+            gwlength, extvarkeys);
+    otherwise
+        error('Supported MCD_VER are ''6_1'' and ''5_3''.');
+end
+% out: Struct with following fields:
 %
-% Output variables must be mentioned before the function call in order to 
-% reserve memory 
-% Arguments (outputs):
+%   pres    <real> atmospheric pressure (Pa)
+%   ro      <real> atmospheric density (kg/m^3)
+%   temp    <real> atmospheric temperature (K)
+%   u       <real> zonal wind component (East-West)
+%   v       <real> meridional wind component (North-South)
+%   meanvar <real> mean unperturbed values (array of 5)
+%   extvar  <real>  extra variables (array of 100)
+%   seedout <real> current value of the seed of the random number generator
+%   ier     <integer> error flag (0 = OK)
 %
-meanvar = zeros(1,5);  % <real> mean unperturbed values (array of 5)
-extvar = zeros(1,100); % <real>  extra variables (array of 100)
 
-pres    = zeros(1,2); % <real> atmospheric pressure (Pa)
-rho    = zeros(1,2); % <real> atmospheric density (kg/m^3)
-temp    = zeros(1,2); % <real> atmospheric temperature (K)
-u       = zeros(1,2); % <real> zonal wind component (East-West)
-v       = zeros(1,2);  % <real> meridional wind component (North-South)
-seedout = zeros(1,2); % <real> current value of the seed of the random number generator
-ier     = zeros(1,2);  % <integer> error flag (0 = OK)
 
-mlb_call_mcd(zkey,xz,xlon,xlat,hireskey,datekey,xdate,localtime,dset,scena,...
-    perturkey,seedin,gwlength,extvarkeys,pres,rho,temp,u,v,meanvar,extvar,seedout,ier);
-
-if verbose
-    if ier(1)==0
-        fprintf('p   = %g Pa\n', pres(1));
-        fprintf('rho = %g kg/m3\n',rho(1));
-        fprintf('T   = %g K \n',temp(1));
-        fprintf('Zonal wind      = %g m/s\n',u(1));
-        fprintf('Meridional wind = %g m/s\n',v(1));
+if out.ier==0
+    if verbose
+        fprintf('p   = %g Pa\n', out.pres);
+        fprintf('rho = %g kg/m3\n', out.ro);
+        fprintf('T   = %g K \n', out.temp);
+        fprintf('Zonal wind      = %g m/s\n',out.u);
+        fprintf('Meridional wind = %g m/s\n',out.v);
         fprintf('\n');
+    
         for i=1:5
-            fprintf('meanvar(%d)= %g\n',i,meanvar(i));
+            fprintf('meanvar(%d)= %g\n',i,out.meanvar(i));
         end
-        fprintf('\n'); 
-        for i=1:7
-            fprintf('extvar(%d) = %g\n',i,extvar(i));
-        end
-        for i = 8:80
-            if extvarkeys(i)~=0 
-                fprintf('extvar(%d) = %g\n',i,extvar(i));
+        fprintf('\n');         
+        if extvarkeys(1)~=0 
+            for i = 1:85
+                fprintf('extvar(%d) = %g\n',i,out.extvar(i));
+            end
+        else
+            for i=1:7
+                fprintf('extvar(%d) = %g\n',i,out.extvar(i));
             end
         end
-    else
-        fprintf(2, 'CALL_MCD ERROR !!\n');
-        fprintf(2, 'returned error code: %d\n',ier(1));
     end
 else
-    if ier(1)~=0
-        fprintf(2, 'CALL_MCD ERROR !!\n');
-        fprintf(2, 'returned error code: %d\n',ier(1));
-    end
+    fprintf('CALL_MCD ERROR !!\n');
+    fprintf('returned error code: %d\n',out.ier);
 end
 
 ires = 0;
+
+pres   = out.pres;
+rho    = out.ro;
+temp   = out.temp;
+extvar = out.extvar;
+
 
 end
 

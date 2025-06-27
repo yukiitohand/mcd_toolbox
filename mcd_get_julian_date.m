@@ -13,6 +13,9 @@ function [date_julian] = mcd_get_julian_date(dt,varargin)
 %   date_julian: julian date.
 %  
 % OPTIONAL Parameters
+%   'MCD_VER': str ['6_1', '5_3']
+%       Version of MCD
+%       (default) '6_1'
 %   'VERBOSE': boolean
 %       whether or not to print some
 %       (default) 1
@@ -22,12 +25,15 @@ if ~isdatetime(dt)
 end
 
 %% VARARGIN
+mcd_ver = '6_1';
 verbose = true;
 if (rem(length(varargin),2)==1)
     error('Optional parameters should always go by pairs');
 else
     for i=1:2:(length(varargin)-1)
         switch upper(varargin{i})
+            case 'MCD_VER'
+                mcd_ver = varargin{i+1};
             case 'VERBOSE'
                 verbose = varargin{i+1};
             otherwise
@@ -45,29 +51,35 @@ hour      = dt.Hour;       % <integer> hour
 minute    = dt.Minute;     % <integer> minute
 second    = dt.Second;     % <integer> second
 
-% Output variables must be mentioned before the function call in order to 
-% reserve memory 
-% Arguments (outputs):
-ierr = zeros(1,2);           % <integer> error flag (0 = OK)
-date_julian = zeros(1,2);    % <real> julian date            
-
-mlb_julian(month,day,year,hour,minute,second,ierr,date_julian);
-
-if verbose
-    if ierr(1)==0
-     fprintf('month  = %g\n', month );
-     fprintf('day    = %g\n', day   );
-     fprintf('year   = %g\n', year  );
-     fprintf('hour   = %g\n', hour  );
-     fprintf('minute = %g\n', minute);
-     fprintf('second = %g\n', second);
-     fprintf('This is julian date = %g\n\n', date_julian(1));
-    else
-     fprintf('julian ERROR !!\n');
-     fprintf('returned error code: %d\n\n',ierr(1));
-    end
+switch mcd_ver
+    case '6_1'
+        [date_julian, ierr] = mlb_julian_MCDv6_1( ...
+            month, day, year, hour, minute, second);
+    case '5_3'
+        [date_julian, ierr] = mlb_julian_MCDv5_3( ...
+            month, day, year, hour, minute, second);
+    otherwise
+        error('Supported MCD_VER are ''6_1'' and ''5_3''.');
 end
 
-date_julian = date_julian(1);
+% Two outputs are returned.
+% date: <real> julian date
+% ierr: <integer> error flag (0 = OK)
+
+
+if ierr(1)==0
+    if verbose
+        fprintf('month  = %g\n', month );
+        fprintf('day    = %g\n', day   );
+        fprintf('year   = %g\n', year  );
+        fprintf('hour   = %g\n', hour  );
+        fprintf('minute = %g\n', minute);
+        fprintf('second = %g\n', second);
+        fprintf('This is julian date = %g\n\n', date_julian(1));
+    end
+else
+    fprintf('julian ERROR !!\n');
+    fprintf('returned error code: %d\n\n',ierr(1));
+end
 
 end
